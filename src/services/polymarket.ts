@@ -1,39 +1,80 @@
-import { ClobClient, Side } from '@polymarket/clob-client';
+import { ClobClient, Side, OrderType, Chain } from '@polymarket/clob-client-v2';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { polygon } from 'viem/chains';
 import { PriceData, Position } from '../types';
 import { logger } from '../utils/logger';
 
-let clob: ClobClient;
+let client: ClobClient;
 
 export const initPolymarket = async () => {
-  clob = new ClobClient(
-    process.env.CLOB_API_KEY!,
-    process.env.CLOB_SECRET!,
-    process.env.CLOB_PASSPHRERE!,
-    'polygon',
-    'https://clob.polymarket.com'
-  );
-  await clob.deriveApiKey();
-  logger.info('Polymarket bağlantısı kuruldu');
+  const host = 'https://clob.polymarket.com';
+  const chainId = Chain.POLYGON;
+  const account = privateKeyToAccount(`0x${process.env.WALLET_PRIVATE_KEY}`);
+  const walletClient = createWalletClient({
+    account,
+    chain: polygon,
+    transport: http()
+  });
+
+  // Önce geçici bir client ile API key'leri al
+  const tempClient = new ClobClient({ host, chain: chainId, signer: walletClient });
+  const creds = await tempClient.createOrDeriveApiKey();
+  logger.info('API key oluşturuldu/derived edildi');
+
+  // Asıl client'ı API key'ler ile oluştur
+  client = new ClobClient({
+    host,
+    chain: chainId,
+    signer: walletClient,
+    creds: {
+      key: creds.key,
+      secret: creds.secret,
+      passphrase: creds.passphrase
+    }
+  });
+  logger.info('Polymarket v2 bağlantısı kuruldu');
 };
 
 export const getMarketPrices = async (tokenId: string): Promise<PriceData> => {
-  const orderBook = await clob.getOrderBook(tokenId);
-  const bestBid = orderBook.bids && orderBook.bids[0] ? Number(orderBook.bids[0].price) : 0;
-  const bestAsk = orderBook.asks && orderBook.asks[0] ? Number(orderBook.asks[0].price) : 0;
-  return {
-    tokenId,
-    bid: bestBid,
-    ask: bestAsk,
-    lastPrice: bestBid || bestAsk,
-    volume: 0,
-    timestamp: new Date()
-  };
+  try {
+    const orderBook = await client.getOrderBook(tokenId);
+    const bids = orderBook.bids || [];
+    const asks = orderBook.asks || [];
+    const bestBid = bids.length > 0 ? Number(bids[0].price) : 0;
+    const bestAsk = asks.length > 0 ? Number(asks[0].price) : 0;
+
+    return {
+      tokenId,
+      bid: bestBid,
+      ask: bestAsk,
+      lastPrice: bestBid || bestAsk,
+      volume: 0,
+      timestamp: new Date()
+    };
+  } catch (error) {
+    logger.error(`getMarketPrices hatası: ${error}`);
+    return {
+      tokenId,
+      bid: 0,
+      ask: 0,
+      lastPrice: 0,
+      volume: 0,
+      timestamp: new Date()
+    };
+  }
 };
 
 export const checkLiquidity = async (tokenId: string, requiredSize: number): Promise<boolean> => {
-  const orderBook = await clob.getOrderBook(tokenId);
-  const totalAskSize = (orderBook.asks || []).slice(0, 3).reduce((sum, ask) => sum + Number(ask.size), 0);
-  return totalAskSize >= requiredSize;
+  try {
+    const orderBook = await client.getOrderBook(tokenId);
+    const asks = orderBook.asks || [];
+    const totalAskSize = asks.slice(0, 3).reduce((sum, ask) => sum + Number(ask.size), 0);
+    return totalAskSize >= requiredSize;
+  } catch (error) {
+    logger.warn(`Likidite kontrolü başarısız: ${error}`);
+    return false;
+  }
 };
 
 export const placeLimitOrder = async (tokenId: string, side: Side, price: number, size: number): Promise<string> => {
@@ -41,19 +82,27 @@ export const placeLimitOrder = async (tokenId: string, side: Side, price: number
     logger.warn(`Yetersiz likidite: ${tokenId} için ${size} lot`);
     return '';
   }
-  const order = await clob.createOrder({
-    tokenId,
-    side,
-    price,
-    size,
-    orderType: 'GTC'
-  });
-  const resp = await clob.postOrder(order);
-  logger.info(`Emir gönderildi: ${side} ${size} adet @ ${price} - ${resp.orderID}`);
-  return resp.orderID;
+
+  try {
+    const response = await client.createAndPostOrder(
+      {
+        tokenID: tokenId,
+        side: side,
+        price: price,
+        size: size
+      },
+      { tickSize: "0.01" },
+      OrderType.GTC
+    );
+    logger.info(`Emir gönderildi: ${side} ${size} adet @ ${price} - ${response.orderID}`);
+    return response.orderID;
+  } catch (error) {
+    logger.error(`Emir gönderme hatası: ${error}`);
+    return '';
+  }
 };
 
 export const getCurrentPositions = async (): Promise<Position[]> => {
-  // Gerçek implementasyon - wallet'dan token bakiyeleri çekilmeli
+  // Gerçek implementasyon - wallet token bakiyelerinden alınmalı
   return [];
 };
