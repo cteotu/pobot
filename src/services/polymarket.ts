@@ -5,13 +5,11 @@ import { logger } from '../utils/logger';
 let clob: ClobClient;
 
 export const initPolymarket = async () => {
-  // Yeni SDK sürümüne uygun constructor
   clob = new ClobClient(
     process.env.CLOB_API_KEY!,
     process.env.CLOB_SECRET!,
-    process.env.CLOB_PASSPHRASE!,
-    'polygon', // network
-    undefined,  // signer (opsiyonel)
+    process.env.CLOB_PASSPHRERE!,
+    'polygon',
     'https://clob.polymarket.com'
   );
   await clob.deriveApiKey();
@@ -20,9 +18,8 @@ export const initPolymarket = async () => {
 
 export const getMarketPrices = async (tokenId: string): Promise<PriceData> => {
   const orderBook = await clob.getOrderBook(tokenId);
-  // orderBook.bids[0]?.price string veya number olabilir, parseFloat ile güvence altına al
-  const bestBid = orderBook.bids[0]?.price ? parseFloat(orderBook.bids[0].price as any) : 0;
-  const bestAsk = orderBook.asks[0]?.price ? parseFloat(orderBook.asks[0].price as any) : 0;
+  const bestBid = orderBook.bids && orderBook.bids[0] ? Number(orderBook.bids[0].price) : 0;
+  const bestAsk = orderBook.asks && orderBook.asks[0] ? Number(orderBook.asks[0].price) : 0;
   return {
     tokenId,
     bid: bestBid,
@@ -35,9 +32,7 @@ export const getMarketPrices = async (tokenId: string): Promise<PriceData> => {
 
 export const checkLiquidity = async (tokenId: string, requiredSize: number): Promise<boolean> => {
   const orderBook = await clob.getOrderBook(tokenId);
-  const totalAskSize = orderBook.asks
-    .slice(0, 3)
-    .reduce((sum, ask) => sum + parseFloat(ask.size as any), 0);
+  const totalAskSize = (orderBook.asks || []).slice(0, 3).reduce((sum, ask) => sum + Number(ask.size), 0);
   return totalAskSize >= requiredSize;
 };
 
@@ -48,7 +43,7 @@ export const placeLimitOrder = async (tokenId: string, side: Side, price: number
   }
   const order = await clob.createOrder({
     tokenId,
-    side,   // Side.BUY veya Side.SELL enum
+    side,
     price,
     size,
     orderType: 'GTC'
@@ -59,6 +54,6 @@ export const placeLimitOrder = async (tokenId: string, side: Side, price: number
 };
 
 export const getCurrentPositions = async (): Promise<Position[]> => {
-  // Gerçek cüzdan bakiyesi kontrolü yapılmalı
+  // Gerçek implementasyon - wallet'dan token bakiyeleri çekilmeli
   return [];
 };
