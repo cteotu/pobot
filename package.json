@@ -1,0 +1,28 @@
+{
+  "name": "polymarket-weather-bot",
+  "version": "3.0.0",
+  "description": "Advanced Polymarket weather trading bot with multi-source forecasts, Kelly sizing, arbitrage, websocket, and risk management",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "backtest": "ts-node src/risk/backtestEngine.ts"
+  },
+  "dependencies": {
+    "@polymarket/clob-client": "^4.2.0",
+    "axios": "^1.4.0",
+    "dotenv": "^16.0.3",
+    "ws": "^8.13.0",
+    "winston": "^3.9.0",
+    "node-cron": "^3.0.2",
+    "date-fns": "^2.30.0",
+    "mathjs": "^11.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.3.1",
+    "@types/ws": "^8.5.5",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.3"
+  }
+}
