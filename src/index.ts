@@ -5,6 +5,7 @@ import { WebSocketPriceFeed } from './services/websocketPriceFeed';
 import { generateWeatherSignals } from './strategies/weatherStrategy';
 import { dynamicPositionSizing, applyStopLossTakeProfit } from './risk/riskManager';
 import { logger } from './utils/logger';
+import { Side } from '@polymarket/clob-client-v2';
 
 const CONFIG = {
   locations: [
@@ -19,21 +20,28 @@ const CONFIG = {
 
 const run = async () => {
   await initPolymarket();
-  const wsFeed = new WebSocketPriceFeed(Array.from(CONFIG.tokenIdMap.values()));
-  wsFeed.connect();
+
+  // WebSocket bağlantısı (opsiyonel, v2'de farklılık gösterebilir)
+  // const wsFeed = new WebSocketPriceFeed(Array.from(CONFIG.tokenIdMap.values()));
+  // wsFeed.connect();
 
   setInterval(async () => {
     for (const loc of CONFIG.locations) {
       const signals = await generateWeatherSignals(loc.lat, loc.lon, loc.icao, loc.key, CONFIG.tokenIdMap);
       const equity = 1000; // sabit örnek, gerçek cüzdan bakiyesi okunmalı
+
       for (const signal of signals) {
         const size = dynamicPositionSizing(signal, equity);
         if (size > 0) {
           const marketPrice = (await getMarketPrices(signal.tokenId)).ask;
-          const limitPrice = marketPrice * 0.99;
-          await placeLimitOrder(signal.tokenId, 'BUY', limitPrice, size);
+          if (marketPrice > 0) {
+            const limitPrice = marketPrice * 0.99;
+            // Side.BUY enum olarak kullanılıyor
+            await placeLimitOrder(signal.tokenId, Side.BUY, limitPrice, size);
+          }
         }
       }
+
       // Risk yönetimi için boş pozisyon listesi
       const positions: any[] = [];
       applyStopLossTakeProfit(positions, new Map());
